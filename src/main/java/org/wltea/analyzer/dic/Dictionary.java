@@ -78,7 +78,7 @@ public class Dictionary {
 	private Configuration configuration;
 	public static ESLogger logger = Loggers.getLogger("ik-analyzer");
 
-	private static ScheduledExecutorService pool = Executors.newScheduledThreadPool(1);
+	private static ScheduledExecutorService pool = Executors.newScheduledThreadPool(2);
 
 	public static final String PATH_DIC_MAIN = "main.dic";
 	public static final String PATH_DIC_SURNAME = "surname.dic";
@@ -92,6 +92,7 @@ public class Dictionary {
 	private final static  String REMOTE_EXT_DICT = "remote_ext_dict";
 	private final static  String EXT_STOP = "ext_stopwords";
 	private final static  String REMOTE_EXT_STOP = "remote_ext_stopwords";
+	private final static  String REDIS_HOST = "redis_host";
 
 	private Path conf_dir;
 	private Properties props;
@@ -113,6 +114,7 @@ public class Dictionary {
 				logger.info("try load config from {}", configFile);
 				input = new FileInputStream(configFile.toFile());
 			} catch (FileNotFoundException ex) {
+
 				// We should report origin exception
 				logger.error("ik-analyzer", e);
 			}
@@ -133,6 +135,12 @@ public class Dictionary {
 			return props.getProperty(key);
 		}
 		return null;
+	}
+
+	public void setProperty(String key,String value){
+		if(props!= null){
+			props.setProperty(key,value);
+		}
 	}
 	/**
 	 * 词典初始化 由于IK Analyzer的词典采用Dictionary类的静态方法进行词典初始化
@@ -162,6 +170,7 @@ public class Dictionary {
 						for (String location : singleton.getRemoteExtStopWordDictionarys()) {
 							pool.scheduleAtFixedRate(new Monitor(location), 10, 60, TimeUnit.SECONDS);
 						}
+						pool.scheduleAtFixedRate(new RedisDict(),10,60,TimeUnit.SECONDS);
 					}
 
 					return singleton;
@@ -175,17 +184,33 @@ public class Dictionary {
 		List<String> extDictFiles = new ArrayList<String>(2);
 		String extDictCfg = getProperty(EXT_DICT);
 		if (extDictCfg != null) {
-
 			String[] filePaths = extDictCfg.split(";");
 			for (String filePath : filePaths) {
 				if (filePath != null && !"".equals(filePath.trim())) {
 					Path file = PathUtils.get(filePath.trim());
 					extDictFiles.add(file.toString());
-
 				}
 			}
 		}
 		return extDictFiles;
+	}
+
+	/**
+	 * 获取redis 的配置路径
+	 * */
+	public List<String> getRedisHosts(){
+		List<String> extDictFiles = new ArrayList<String>(2);
+		String redisHostCfg = getProperty(REDIS_HOST);
+		logger.debug("redis host is {}" ,redisHostCfg);
+		if(redisHostCfg != null){
+			String[] hostNames = redisHostCfg.split(";");
+			for(String hostName :hostNames){
+				if(null != hostName & !"".equals(hostName.trim())){
+					extDictFiles.add(hostName);
+				}
+			}
+		}
+		return  extDictFiles;
 	}
 
 	public List<String> getRemoteExtDictionarys() {
@@ -743,6 +768,36 @@ public class Dictionary {
 				is = null;
 			} catch (IOException e) {
 				logger.error("ik-analyzer", e);
+			}
+		}
+	}
+
+	/**
+	 * 添加词汇
+	 * */
+	public void addMainWords(Collection<String> words)
+	{
+		if (words != null) {
+			for (String word : words) {
+				if (word != null) {
+					singleton._MainDict.fillSegment(word.trim().toLowerCase().toCharArray());
+					logger.info(word);
+				}
+			}
+		}
+	}
+
+	/**
+	 * 添加停顿词
+	 * */
+	public void addStopWords(Collection<String> words)
+	{
+		if (words != null) {
+			for (String word : words) {
+				if (word != null) {
+					singleton._StopWords.fillSegment(word.trim().toLowerCase().toCharArray());
+					logger.info(word);
+				}
 			}
 		}
 	}
